@@ -4,9 +4,16 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 
 # Глобальный словарь для хранения данных пользователей (опционально)
 user_data = {
-    "1234": {"name": "Пупкин Иван Иванович", "phone": "использовал личный номер для тестирования", "balance": "550", "service":"Базовый", "cost": "1300", "payment": "0", "utilities":"Интернет и ТВ"}
+    "1234": {"name": "Пупкин Иван Иванович", "phone": "79287117738", "balance": "550", "service":"Базовый", "cost": "1300", "payment": "0", "utilities":"Интернет и ТВ"}
 }
 new_user_data = {} # Словарь для хранения данных новых пользователей (чтоб им потом перезвонили)
+news_list = [
+    "Новость 1",
+    "Новость 2",
+    "Новость 3",
+    "Новость 4",
+    "Новость 5"
+]
 
 # Чтение токена из файла конфигурации
 config = configparser.ConfigParser()
@@ -100,11 +107,14 @@ async def valid_action(update, context, contract):
 
 # Функция для кнопки "Отправить СМС с кодом"
 async def message_action(update, context):
-    sms_response = await send_sms(update, context)
-    if "Ошибка" in sms_response:
-        await update.callback_query.message.reply_text(f"Произошла ошибка при отправке SMS. \n{sms_response}")
-    else:
-        await update.callback_query.message.reply_text(
+    #sms_response = await send_sms(update, context)
+    #if "Ошибка" in sms_response:
+        #await update.callback_query.message.reply_text(f"Произошла ошибка при отправке SMS. \n{sms_response}")
+    #else:
+    code = random.randint(100000, 999999)
+    context.user_data['key'] = code
+    print(code)
+    await update.callback_query.message.reply_text(
             "На Ваш номер отправлено сообщение с кодом для входа в личный кабинет.\nВведите код:")
     context.user_data['next_action'] = 'ask_key'  # Устанавливаем состояние для следующего шага
 
@@ -168,7 +178,7 @@ async def refill_action(update, context):
     user = context.user_data.get('user_contract')
     user_data[user]['payment'] = int(user_data[user]['cost']) - int(user_data[user]['balance'])
     message = await update.callback_query.message.reply_text(
-        f"Текущий баланс {user_data[user]['balance']} \nРекомендуемая сумма к оплате {user_data[user]['payment']}"
+        f"Текущий баланс: {user_data[user]['balance']} \nРекомендуемая сумма к оплате: {user_data[user]['payment']}"
         "\nДополнительные кнопки для перехода в другие разделы",
         reply_markup = reply_markup
     )
@@ -184,12 +194,44 @@ async def news_action(update, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard_news)
     user = context.user_data.get('user_contract')
+
+    context.user_data['news_index'] = 0
     message = await update.callback_query.message.reply_text(
-        "Какая-то новость, которую надо подтянуть из административного бэкенда",
-        reply_markup = reply_markup
+        news_list[context.user_data['news_index']],
+        reply_markup=reply_markup
     )
     context.user_data['last_message_id'] = message.message_id
     context.user_data['chat_id'] = message.chat_id
+
+# Левая стрелка
+async  def left_action(update, context):
+    keyboard_news = [
+        [InlineKeyboardButton("❮", callback_data='left'),  # Листать нечего, так что обе стрелки пока что неактивны
+         InlineKeyboardButton("Вернуться", callback_data='back'),
+         InlineKeyboardButton("❯", callback_data='right')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard_news)
+    await context.bot.edit_message_text(
+        chat_id = context.user_data.get('chat_id'),
+        message_id = context.user_data.get('last_message_id'),
+        text = news_list[context.user_data.get('news_index')],
+        reply_markup = reply_markup
+    )
+
+# Правая стрелка
+async  def right_action(update, context):
+    keyboard_news = [
+        [InlineKeyboardButton("❮", callback_data='left'),  # Листать нечего, так что обе стрелки пока что неактивны
+         InlineKeyboardButton("Вернуться", callback_data='back'),
+         InlineKeyboardButton("❯", callback_data='right')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard_news)
+    await context.bot.edit_message_text(
+        chat_id = context.user_data.get('chat_id'),
+        message_id = context.user_data.get('last_message_id'),
+        text = news_list[context.user_data.get('news_index')],
+        reply_markup = reply_markup
+    )
 
 # Функция для кнопки "Акции"
 async def events_action(update, context):
@@ -204,6 +246,14 @@ async def events_action(update, context):
     )
     context.user_data['last_message_id'] = message.message_id
     context.user_data['chat_id'] = message.chat_id
+
+async def supp_action(update, context):
+    await update.callback_query.message.reply_text(
+        "Пока что непонятно, как будет происходить обращение в техничесскую поддержку, но сообщение сохраняется для дальнейшего использования."
+        " Фильтр на нецензурную брань не установлен"
+    )
+    user_message = "dick"
+    context.user_data['appeal'] = user_message
 
 # Функция для кнопки "Вернуться"
 async def back_action(update, context):
@@ -242,6 +292,7 @@ async def menu(update, context):
 async def button(update, context):
     query = update.callback_query
     user_contract = context.user_data.get('user_contract')
+    news_index = context.user_data.get('news_index', 0)
     await query.answer()  # Уведомление Telegram, что запрос обработан
 
     # "Запустить"
@@ -275,6 +326,12 @@ async def button(update, context):
     # Обработка нажатий кнопок в разделах меню(пока что только "Вернуться")
     elif query.data == 'back':
         await back_action(update, context)
+    elif query.data == 'left':
+        context.user_data['news_index'] = (news_index - 1) % len(news_list)
+        await left_action(update, context)
+    elif query.data == 'right':
+        context.user_data['news_index'] = (news_index + 1) % len(news_list)
+        await right_action(update, context)
 
 
     # Убираем кнопки, чтобы предотвратить повторное нажатие, для более комфортного тестирования работы бота, функция неактивна
